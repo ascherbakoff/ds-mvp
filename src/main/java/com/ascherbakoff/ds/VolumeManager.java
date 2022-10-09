@@ -23,7 +23,7 @@ public class VolumeManager {
         this.extSize = extSize;
         this.blkSize = blkSize;
         this.dataIO = dataIO;
-        this.mapper = new Mapper(metadataIO);
+        this.mapper = new Mapper(extSize, blkSize, metadataIO);
         this.allocator = new Allocator(extSize, dataIO);
     }
 

@@ -16,7 +16,7 @@ public class DataExtentCache {
     private final int volumeId;
     private final Allocator allocator;
 
-    private ConcurrentHashMap<Integer, DataExtent> map = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Integer, DataExtent> cache = new ConcurrentHashMap<>();
 
     public DataExtentCache(int volumeId, int extSize, int blockSize, AsyncFileIO dataIO, Mapper mapper, Allocator allocator) {
         this.volumeId = volumeId;
@@ -44,7 +44,7 @@ public class DataExtentCache {
     public CompletableFuture<Void> read(int lba, ByteBuffer dst) {
         int extLba = toExtentLba(lba);
 
-        DataExtent extent = map.get(extLba);
+        DataExtent extent = cache.get(extLba);
 
         int blockIdx = lba - extLba * blocksInExtent;
 
@@ -54,24 +54,22 @@ public class DataExtentCache {
             return CompletableFuture.completedFuture(null);
         }
 
-        Long physIdx = mapper.get(volumeId, extLba);
+        Long physIdx = mapper.get(volumeId, lba);
 
         if (physIdx == null) {
             return CompletableFuture.failedFuture(new StorageException("No data for volumeId=" + volumeId + ", lba=" + lba));
         }
 
-        long off = physIdx * extSize;
-
         if (extent == null) {
             extent = new DataExtent(blockSize, blocksInExtent);
 
-            map.put(extLba, extent);
+            cache.put(extLba, extent);
         }
 
         extent.data[blockIdx] = ByteBuffer.allocate(blockSize);
 
         DataExtent finalExtent = extent;
-        return dataIO.readFully(extent.data[blockIdx], off).thenApply(ignored -> {
+        return dataIO.readFully(extent.data[blockIdx], physIdx * blockSize).thenApply(ignored -> {
             finalExtent.readTo(blockIdx, dst);
             return null;
         });
@@ -80,13 +78,13 @@ public class DataExtentCache {
     void write(int lba, ByteBuffer src) {
         int extLba = toExtentLba(lba);
 
-        DataExtent extent = map.get(extLba);
+        DataExtent extent = cache.get(extLba);
 
         if (extent == null) {
             extent = new DataExtent(blockSize, blocksInExtent);
         }
 
-        map.putIfAbsent(extLba, extent);
+        cache.putIfAbsent(extLba, extent);
 
         extent.writeFrom(lba - extLba * blocksInExtent, src);
     }
@@ -95,26 +93,27 @@ public class DataExtentCache {
         int extLba = entry.getKey();
         DataExtent extent = entry.getValue();
 
-        if (extent == null)
-            return CompletableFuture.completedFuture(null);
-
-        Long physIdx = mapper.get(volumeId, extLba);
-
-        if (physIdx == null) {
-            physIdx = allocator.allocate();
-            mapper.put(volumeId, extLba, physIdx);
-        }
-
-        long physOff = physIdx * extSize;
-
         CompletableFuture fut = CompletableFuture.completedFuture(null);
+
+        if (extent == null)
+            return fut;
 
         for (int i = 0; i < extent.data.length; i++) {
             ByteBuffer buf = extent.data[i];
 
             if (buf != null) {
-                int finalI = i;
-                fut = fut.thenComposeAsync(ignored -> dataIO.writeFully(buf, physOff + finalI * blockSize));
+                int lba = extLba + i;
+
+                Long physIdx = mapper.get(volumeId, lba);
+
+                if (physIdx == null) {
+                    physIdx = allocator.allocate(); // Allocates in extents.
+                    mapper.put(volumeId, lba, physIdx);
+                    physIdx = physIdx * blocksInExtent + i;
+                }
+
+                Long finalPhysIdx = physIdx;
+                fut = fut.thenComposeAsync(ignored -> dataIO.writeFully(buf, finalPhysIdx * blockSize));
             }
         }
 
@@ -122,7 +121,7 @@ public class DataExtentCache {
     }
 
     public void flush() {
-        Set<Entry<Integer, DataExtent>> set = map.entrySet();
+        Set<Entry<Integer, DataExtent>> set = cache.entrySet();
 
         Iterator<Entry<Integer, DataExtent>> iterator = set.iterator();
 
