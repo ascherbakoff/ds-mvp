@@ -5,15 +5,11 @@ import java.util.concurrent.CompletableFuture;
 
 public class VolumeImpl implements Volume {
     private final int id;
-    private final int size;
     private final DataExtentCache dataCache;
-    private final int extSize;
 
-    public VolumeImpl(int id, int size, int extSize, int blkSize, AsyncFileIO dataIO, Mapper mapper, Allocator allocator) {
+    public VolumeImpl(int id, int size, DataExtentCache dataCache) {
         this.id = id;
-        this.size = size;
-        this.extSize = extSize;
-        this.dataCache = new DataExtentCache(id, extSize, blkSize, dataIO, mapper, allocator);
+        this.dataCache = dataCache;
     }
 
     @Override

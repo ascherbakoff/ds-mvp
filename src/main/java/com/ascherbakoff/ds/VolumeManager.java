@@ -8,22 +8,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class VolumeManager {
     private final Allocator allocator;
+    private final MapperFactory factory;
     AtomicInteger idGen = new AtomicInteger();
 
     private Map<Integer, Volume> vols = new ConcurrentHashMap<>();
 
     private AsyncFileIO dataIO;
 
-    private final Mapper mapper;
-
     private final int extSize;
     private final int blkSize;
 
-    public VolumeManager(int extSize, int blkSize, AsyncFileIO dataIO, AsyncFileIO metadataIO) throws IOException {
+    public VolumeManager(int extSize, int blkSize, AsyncFileIO dataIO, AsyncFileIO metadataIO, MapperFactory factory) throws IOException {
         this.extSize = extSize;
         this.blkSize = blkSize;
         this.dataIO = dataIO;
-        this.mapper = new Mapper(extSize, blkSize, metadataIO);
+        this.factory = factory;
         this.allocator = new Allocator(extSize, dataIO);
     }
 
@@ -34,15 +33,13 @@ public class VolumeManager {
     public Volume create(int volSize) {
         int volumeId = idGen.incrementAndGet();
 
-        VolumeImpl vol = new VolumeImpl(volumeId, volSize, extSize, blkSize, dataIO, mapper, allocator);
+        Mapper mapper = factory.create();
+
+        VolumeImpl vol = new VolumeImpl(volumeId, volSize, new DataExtentCache(extSize, blkSize, dataIO, mapper, allocator));
 
         vols.put(volumeId, vol);
 
         return vol;
-    }
-
-    public Mapper getMapper() {
-        return mapper;
     }
 
     public Allocator getAllocator() {

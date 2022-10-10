@@ -13,13 +13,11 @@ public class DataExtentCache {
     public final int blocksInExtent;
     private final AsyncFileIO dataIO;
     private final Mapper mapper;
-    private final int volumeId;
     private final Allocator allocator;
 
     private ConcurrentHashMap<Integer, DataExtent> cache = new ConcurrentHashMap<>();
 
-    public DataExtentCache(int volumeId, int extSize, int blockSize, AsyncFileIO dataIO, Mapper mapper, Allocator allocator) {
-        this.volumeId = volumeId;
+    public DataExtentCache(int extSize, int blockSize, AsyncFileIO dataIO, Mapper mapper, Allocator allocator) {
         this.extSize = extSize;
         this.blockSize = blockSize;
         this.blocksInExtent = extSize / blockSize;
@@ -54,10 +52,10 @@ public class DataExtentCache {
             return CompletableFuture.completedFuture(null);
         }
 
-        Long physIdx = mapper.get(volumeId, lba);
+        Long physIdx = mapper.get(lba);
 
         if (physIdx == null) {
-            return CompletableFuture.failedFuture(new StorageException("No data for volumeId=" + volumeId + ", lba=" + lba));
+            return CompletableFuture.failedFuture(new StorageException("No data for lba=" + lba));
         }
 
         if (extent == null) {
@@ -104,12 +102,12 @@ public class DataExtentCache {
             if (buf != null) {
                 int lba = extLba + i;
 
-                Long physIdx = mapper.get(volumeId, lba);
+                Long physIdx = mapper.get(lba);
 
                 if (physIdx == null) {
-                    physIdx = allocator.allocate(); // Allocates in extents.
-                    mapper.put(volumeId, lba, physIdx);
-                    physIdx = physIdx * blocksInExtent + i;
+                    physIdx = allocator.allocate() * blocksInExtent;
+                    mapper.put(lba, physIdx);
+                    physIdx = physIdx + i;
                 }
 
                 Long finalPhysIdx = physIdx;

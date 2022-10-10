@@ -93,11 +93,9 @@ public class VolumeTest extends AbstractVolumeTest {
         assertTrue(TestUtils.match(buf2, (byte) 'b'));
 
         assertEquals(0, mgr.getAllocator().allocated());
-
         vol1.flush();
 
         assertEquals(1, mgr.getAllocator().allocated());
-
         vol2.flush();
 
         assertEquals(2, mgr.getAllocator().allocated());

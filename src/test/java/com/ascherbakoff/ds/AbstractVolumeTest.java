@@ -28,7 +28,12 @@ public class AbstractVolumeTest {
             metadataIO = new AsyncFileIO(metadataFile, CREATE, READ, WRITE);
             blkSize = 4;
             extSize = 32;
-            mgr = new VolumeManager(extSize, blkSize, dataIO, metadataIO);
+            mgr = new VolumeManager(extSize, blkSize, dataIO, metadataIO, new MapperFactory() {
+                @Override
+                public Mapper create() {
+                    return new ExtentHashMapper(extSize, blkSize, metadataIO);
+                }
+            });
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
